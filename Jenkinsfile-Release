@@ -1,0 +1,93 @@
+/*
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2008-present Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+ *
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+ *
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
+ */
+@Library(['private-pipeline-library', 'jenkins-shared', 'iq-pipeline-library']) _
+
+final chartName = 'nexus-iq-server-ha'
+
+properties([
+  parameters([
+    string(
+      name: 'appVersion',
+      description: 'Version of the application image, like "1.139.0"',
+    ),
+    string(
+      name: 'chartVersion',
+      description: '(Optional) Version of the Chart, like "139.0.0". If omitted, it will be calculated from the appVersion.',
+    ),
+  ])
+])
+
+final chartVersion = calculateChartVersion(params.chartVersion, params.appVersion)
+
+dockerizedBuildPipeline(
+  prepare: {
+    if (! params.appVersion) {
+      error('The appVersion is required.')
+    }
+    githubStatusUpdate('pending')
+  },
+  buildAndTest: {
+    sonatypeZionGitConfig()
+    runSafely "git checkout ${gitBranch(env)}"
+    runSafely "./upgrade.sh chart ${chartVersion} ${params.appVersion}"
+    runSafely './build.sh'
+    runSafely 'git add chart'
+  },
+  skipVulnerabilityScan: true,
+  archiveArtifacts: 'docs/*',
+  testResults: [],
+  deployCondition: { true },
+  retentionPolicy: RetentionPolicy.TEN_BUILDS,
+  deploy: {
+    runSafely 'git add docs'
+    runSafely "git commit -m 'Release Update for ${chartName} ${chartVersion}'"
+
+    sshagent(credentials: [sonatypeZionCredentialsId()]) {
+      runSafely 'git push'
+    }
+  },
+  postDeploy: {
+    // Create tags
+    String tagName = "${chartName}-${chartVersion}"
+    runSafely "git tag -a ${tagName} -m 'Release Update: ${chartVersion}'"
+    sshagent(credentials: [sonatypeZionCredentialsId()]) {
+      runSafely "git push origin ${tagName}"
+    }
+  },
+  onSuccess: {
+    buildNotifications(currentBuild, env)
+  },
+  onFailure: {
+    buildNotifications(currentBuild, env)
+  }
+)
+
+String calculateChartVersion(final String chartVersion, final String appVersion) {
+  if (chartVersion) {
+    return chartVersion
+  }
+
+  if (! appVersion) {
+    error 'Failed to calculate chartVersion with no appVersion.'
+  }
+
+  final versionParts = parseVersionString(appVersion)
+  final chartMajor = versionParts[1]
+  final chartMinor = versionParts[2]
+
+  if (! chartMajor || ! chartMinor) {
+    error "Failed to calculate chartVersion from appVersion: ${appVersion}"
+  }
+
+  return [chartMajor, chartMinor, '0'].join('.')
+}
