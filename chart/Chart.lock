@@ -1,9 +1,9 @@
 dependencies:
 - name: ingress-nginx
   repository: https://kubernetes.github.io/ingress-nginx
-  version: 4.4.2
+  version: 4.15.1
 - name: fluentd
   repository: https://charts.bitnami.com/bitnami
-  version: 7.0.3
-digest: sha256:d601322ce9754462b0defe7e96c86765b5e1c56ff3225569ab2cf97751025f30
-generated: "2024-12-12T13:12:09.665889Z"
+  version: 7.2.5
+digest: sha256:9883424548e3aa6cabf87407d3ad3432fae915c612a441ac76334c11075b69a3
+generated: "2026-08-12T15:33:12.889795551+08:00"
